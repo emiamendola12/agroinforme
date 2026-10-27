@@ -192,6 +192,14 @@ svg{width:1em;height:1em;display:block;flex:none}
   font-variant-numeric:tabular-nums}
 .li .hs u{font-size:.64rem;font-weight:600;opacity:.6;text-decoration:none}
 
+/* el panel del simulador va distinto, para que se encuentre: es una
+   herramienta para mostrar, no una configuración del sistema */
+#dsim{border-style:dashed;border-color:var(--brand2)}
+@media (prefers-color-scheme:dark){#dsim{border-color:var(--ok)}}
+#dsim summary{color:var(--brand2)}
+@media (prefers-color-scheme:dark){#dsim summary{color:var(--ok)}}
+#dsim summary svg,#dsim summary .ar{color:inherit;opacity:.8}
+
 .aviso{margin-top:9px;padding:10px 12px;background:var(--wa-s);color:var(--wa);
   border:1px solid color-mix(in srgb,var(--wa) 30%,transparent);border-radius:11px;
   font-size:.72rem;line-height:1.45;font-weight:600}
@@ -335,24 +343,25 @@ summary svg{color:var(--mut);font-size:16px}
     La decisión y la responsabilidad son del aplicador y del asesor fitosanitario
     matriculado, que debe considerar el marbete del producto, el equipo, el tamaño de
     gota y los cultivos sensibles vecinos.</p>
-    <p><b>Viento.</b> El pronóstico informa viento a 10 m. Para decidir se usa el viento
-    estimado a 2 m (altura de botalón), con el perfil logarítmico estándar (factor 0,75).</p>
-    <p><b>Delta T.</b> Calculado a partir de temperatura y humedad relativa
-    (aproximación de Stull, 2011).</p>
-    <p><b>Inversión térmica: estimada, no medida.</b> Se infiere de noche + viento calmo +
-    cielo despejado. La medición real necesita dos termómetros a distinta altura en el
-    mismo mástil. Es la condición más peligrosa y la que una sola estación no ve.</p>
     <p><b>Esto es una simulación.</b> Todavía no hay una estación instalada. Los
-    números que ves arriba son los que <u>mandaría</u> el equipo puesto en el lote:
-    el mismo formato, el mismo ritmo de un envío por minuto y el mismo movimiento,
-    generados a partir del pronóstico real de la zona. Sirve para ver el sistema
+    números de arriba son los que <u>mandaría</u> el equipo puesto en el lote: el
+    mismo formato, el mismo ritmo de un envío por minuto y el mismo movimiento,
+    armados a partir del pronóstico real de la zona. Sirve para ver el sistema
     terminado antes de comprar el equipo. <b>No son mediciones reales del campo.</b>
     Cuando la estación esté puesta, el aparato reemplaza al simulador y no cambia
     nada más.</p>
-    <p><b>Inversión térmica.</b> Acá ya se calcula <u>medida</u>, comparando el
-    termómetro de 2 m con el de 10 m del mástil. Si arriba está más caliente que
-    abajo, el aire está dado vuelta y la gota queda flotando. Las horas futuras,
-    en cambio, siguen siendo estimadas: no hay forma de medir el futuro.</p>
+    <p><b>Inversión térmica.</b> Los números de ahora se calculan <u>medidos</u>,
+    comparando el termómetro de 2 m con el de 10 m del mástil: si arriba está más
+    caliente que abajo, el aire está dado vuelta y la gota queda flotando. Las
+    horas futuras, en cambio, van estimadas (noche + viento calmo + cielo
+    despejado), porque el futuro no se puede medir.</p>
+    <p><b>Viento.</b> La estación lo mide a 2 m, que es la altura del botalón. En
+    las horas futuras se usa el pronóstico, que informa a 10 m, y se convierte a
+    2 m con el perfil logarítmico estándar (factor 0,75).</p>
+    <p><b>Delta T.</b> Calculado a partir de temperatura y humedad relativa
+    (aproximación de Stull, 2011).</p>
+    <p><b>Heladas.</b> La negra se confirma de verdad con el sensor de temperatura
+    de suelo. Hasta que esté puesto, es una sospecha fundada y no una certeza.</p>
   </div>
 
 </div>
