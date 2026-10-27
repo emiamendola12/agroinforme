@@ -380,7 +380,12 @@ var BASE = [
 
 /* ---------- umbrales ---------- */
 var DEF = {
-  vMin:3, vOk:15, vMax:20,
+  /* Viento: valores que dio Esteban (el agrónomo), 26-10-2026.
+     "Entre 0 y 15 km/h. Zona de media a mala aplicación, 15 a 18."
+     Por eso el mínimo es 0 y no 3: para él la calma no es un problema en sí.
+     El riesgo de la calma lo cubre la regla de inversión térmica, que es
+     justo como él lo piensa. */
+  vMin:0, vOk:15, vMax:18,
   dMin:2, dOk:8,  dMax:10,
   hrOk:60, hrMin:50,
   tOk:25, tMax:30,
@@ -475,8 +480,8 @@ function peor(list){
 }
 function regViento(v){
   if(v < UM.vMin)  return {e:"no", r:"Calmo. Deriva impredecible"};
-  if(v <= UM.vOk)  return {e:"ok", r:UM.vMin + "–" + UM.vOk + " km/h ideal"};
-  if(v <= UM.vMax) return {e:"wa", r:"Alto. Gota gruesa y cuidado"};
+  if(v <= UM.vOk)  return {e:"ok", r:UM.vMin + " a " + UM.vOk + " km/h, apto"};
+  if(v <= UM.vMax) return {e:"wa", r:"De media a mala aplicación"};
   return {e:"no", r:"Mayor a " + UM.vMax + " km/h"};
 }
 function regDelta(d){
