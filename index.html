@@ -55,7 +55,9 @@ svg{width:1em;height:1em;display:block;flex:none}
 .tag{font-size:.7rem;opacity:.72;letter-spacing:.03em;margin-top:1px}
 .chip{margin-left:auto;font-size:.6rem;font-weight:800;letter-spacing:.1em;
   background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.26);
-  padding:5px 9px;border-radius:99px}
+  padding:5px 9px;border-radius:99px;white-space:nowrap}
+.chip.vivo{animation:latir 2s ease-in-out infinite}
+@keyframes latir{0%,100%{opacity:1}50%{opacity:.55}}
 
 .wrap{max-width:680px;margin:0 auto;padding:16px 16px 36px}
 
@@ -269,7 +271,7 @@ summary svg{color:var(--mut);font-size:16px}
       <div class="name">AGROINFORME</div>
       <div class="tag">Condiciones de aplicación · Chivilcoy y zona</div>
     </div>
-    <span class="chip">DEMO</span>
+    <span class="chip vivo" id="chip">● SIMULADA</span>
   </div>
 </header>
 
@@ -323,6 +325,11 @@ summary svg{color:var(--mut);font-size:16px}
     <div class="um" id="um"></div>
   </details>
 
+  <details id="dsim">
+    <summary><span id="sa"></span> Simulador de la estación <span class="ar">&#9656;</span></summary>
+    <div class="um" id="sim"></div>
+  </details>
+
   <div class="note">
     <p><b>Información de apoyo.</b> Esta pantalla no autoriza ni habilita una aplicación.
     La decisión y la responsabilidad son del aplicador y del asesor fitosanitario
@@ -335,9 +342,17 @@ summary svg{color:var(--mut);font-size:16px}
     <p><b>Inversión térmica: estimada, no medida.</b> Se infiere de noche + viento calmo +
     cielo despejado. La medición real necesita dos termómetros a distinta altura en el
     mismo mástil. Es la condición más peligrosa y la que una sola estación no ve.</p>
-    <p><b>Demostración.</b> Los datos son de pronóstico meteorológico, no medidos en el
-    lote. Con estación propia en el campo, estos mismos números se miden en el lugar
-    y cada minuto.</p>
+    <p><b>Esto es una simulación.</b> Todavía no hay una estación instalada. Los
+    números que ves arriba son los que <u>mandaría</u> el equipo puesto en el lote:
+    el mismo formato, el mismo ritmo de un envío por minuto y el mismo movimiento,
+    generados a partir del pronóstico real de la zona. Sirve para ver el sistema
+    terminado antes de comprar el equipo. <b>No son mediciones reales del campo.</b>
+    Cuando la estación esté puesta, el aparato reemplaza al simulador y no cambia
+    nada más.</p>
+    <p><b>Inversión térmica.</b> Acá ya se calcula <u>medida</u>, comparando el
+    termómetro de 2 m con el de 10 m del mástil. Si arriba está más caliente que
+    abajo, el aire está dado vuelta y la gota queda flotando. Las horas futuras,
+    en cambio, siguen siendo estimadas: no hay forma de medir el futuro.</p>
   </div>
 
 </div>
@@ -365,8 +380,19 @@ var ICO = {
   chev:   S + '<path d="m6 9 6 6 6-6"/></svg>',
   slider: S + '<path d="M4 7h10"/><path d="M18 7h2"/><path d="M4 17h4"/><path d="M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
   sol:    S + '<circle cx="12" cy="12" r="3.6"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></svg>',
-  luna:   S + '<path d="M20.5 13.3A8.6 8.6 0 1 1 10.7 3.5a6.7 6.7 0 0 0 9.8 9.8z"/></svg>'
+  luna:   S + '<path d="M20.5 13.3A8.6 8.6 0 1 1 10.7 3.5a6.7 6.7 0 0 0 9.8 9.8z"/></svg>',
+  suelo:  S + '<path d="M3 10h18"/><path d="M12 3v7"/><path d="M5 14.5h2M11 14.5h2M17 14.5h2"'
+            + '/><path d="M5 18.5h2M11 18.5h2M17 18.5h2"/></svg>',
+  antena: S + '<path d="M12 12v9"/><circle cx="12" cy="9" r="2"/>'
+            + '<path d="M7.8 13.2a6 6 0 0 1 0-8.4"/><path d="M16.2 4.8a6 6 0 0 1 0 8.4"/></svg>'
 };
+
+/* la estación envía una vez por minuto */
+function SEG_DESDE_ENVIO(){ return Math.floor((Date.now() % 60000) / 1000); }
+function horaDe(t){
+  var d = new Date(t);
+  return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+}
 
 /* ---------- campos ---------- */
 var BASE = [
@@ -389,7 +415,9 @@ var DEF = {
   dMin:2, dOk:8,  dMax:10,
   hrOk:60, hrMin:50,
   tOk:25, tMax:30,
-  invV:5, invNub:25
+  invV:5, invNub:25,
+  /* inversión medida: diferencia entre el termómetro de 10 m y el de 2 m */
+  invDif:0.5, invAvis:0
 };
 var FILAS_UM = [
   ["g","Viento a 2 m (km/h)"],
@@ -500,11 +528,131 @@ function regTemp(t){
   if(t <= UM.tMax) return {e:"wa", r:"Calor. Evaporación"};
   return {e:"no", r:"Mayor a " + UM.tMax + " °C"};
 }
-function regInversion(noche, v, nub){
+/* Inversión ESTIMADA — para las horas futuras, donde no hay medición. */
+function regInversionEstimada(noche, v, nub){
   if(!noche) return {e:"ok", r:"De día no se forma"};
   if(v < UM.invV && nub < UM.invNub) return {e:"no", r:"Probable: noche, calmo y despejado"};
   if(v < UM.invV) return {e:"wa", r:"Posible: noche y viento calmo"};
   return {e:"ok", r:"Es de noche, pero hay viento"};
+}
+
+/* Inversión MEDIDA — con los dos termómetros del mástil.
+   dif = temperatura a 10 m menos temperatura a 2 m.
+   Si arriba está MÁS CALIENTE que abajo, el aire está dado vuelta y la gota
+   no baja: queda flotando. Es lo que él describe cuando dice que "la
+   pulverización queda flotando en el aire". */
+function regInversionMedida(dif){
+  if(dif >= UM.invDif)  return {e:"no", r:"Medida. Arriba está más caliente"};
+  if(dif >= UM.invAvis) return {e:"wa", r:"El aire se empieza a dar vuelta"};
+  return {e:"ok", r:"Normal: más frío arriba"};
+}
+
+/* ================= SIMULADOR DE LA ESTACIÓN =================
+   Genera lo que mandaría el equipo puesto en el lote. Toma la curva real del
+   pronóstico, la interpola al minuto actual y le suma la variación corta que
+   tiene cualquier medición de verdad (el viento no está nunca quieto).
+
+   Cuando llegue la estación, esto se reemplaza por el dato que manda el
+   equipo y NO cambia nada más del sistema. Es el mismo juego de números.
+   ============================================================ */
+
+var SIM = {forzado: {}};   /* lo que el usuario mueve a mano en el panel */
+
+function ms(iso){ return new Date(iso + "-03:00").getTime(); }
+
+/* interpola una serie horaria al momento exacto */
+function enElMomento(arr, tiempos, t){
+  var i;
+  for(i = 0; i < tiempos.length - 1; i++){
+    var a = ms(tiempos[i]), b = ms(tiempos[i + 1]);
+    if(t >= a && t <= b){
+      if(arr[i] == null || arr[i + 1] == null) return arr[i];
+      var f = (t - a) / (b - a);
+      return arr[i] + (arr[i + 1] - arr[i]) * f;
+    }
+  }
+  return arr[arr.length - 1];
+}
+
+/* variación suave y continua: dos ondas de distinto período */
+function onda(t, seg, fase){ return Math.sin(2 * Math.PI * (t / 1000 / seg) + fase); }
+function variar(t, amp, p1, p2, fase){
+  return amp * (0.62 * onda(t, p1, fase) + 0.38 * onda(t, p2, fase * 1.9 + 1.3));
+}
+
+/* Gradiente entre los 2 m y los 10 m del mástil.
+   De día el suelo se calienta y el aire de abajo está MÁS caliente: negativo.
+   De noche, con calma y cielo despejado, se da vuelta: positivo = inversión. */
+function gradienteMastil(noche, v2, nub, rad){
+  if(noche){
+    var calmo = Math.max(0, 1 - v2 / 8);
+    var despejado = Math.max(0, 1 - nub / 70);
+    return 0.15 + 4.6 * calmo * despejado;
+  }
+  var sol = Math.min(1, (rad || 0) / 700);
+  return -(0.3 + 2.3 * sol);
+}
+
+function leerEstacion(sol){
+  var h = D.hourly, t = Date.now();
+  var T   = enElMomento(h.temperature_2m,       h.time, t);
+  var RH  = enElMomento(h.relative_humidity_2m, h.time, t);
+  var v10 = enElMomento(h.wind_speed_10m,       h.time, t);
+  var dir = enElMomento(h.wind_direction_10m,   h.time, t);
+  var nub = enElMomento(h.cloud_cover,          h.time, t);
+  var rad = enElMomento(h.shortwave_radiation,  h.time, t);
+  var llu = enElMomento(h.precipitation,        h.time, t);
+
+  /* variación corta, como mide un sensor real */
+  T   += variar(t, 0.35, 190, 70,  0.4);
+  RH  += variar(t, 1.8,  210, 85,  1.1);
+  nub  = Math.max(0, Math.min(100, nub + variar(t, 4, 400, 150, 2.2)));
+  var v2  = Math.max(0, v2m(v10) + variar(t, 1.5, 95, 31, 0.7));
+  var raf = v2 + Math.abs(variar(t, 3.4, 23, 9, 1.9)) + 1.2;
+  dir = (dir + variar(t, 12, 160, 55, 2.6) + 360) % 360;
+
+  var noche = esNocheAhora(sol, t);
+
+  /* termómetro de arriba del mástil */
+  var dif = gradienteMastil(noche, v2, nub, rad) + variar(t, 0.22, 130, 47, 3.1);
+  var T10 = T + dif;
+
+  /* temperatura del suelo: sigue al aire con retraso y amortiguada */
+  var media = 0, n = 0, i;
+  for(i = 0; i < h.time.length; i++){
+    if(h.temperature_2m[i] == null) continue;
+    if(Math.abs(ms(h.time[i]) - t) <= 12 * 3600 * 1000){ media += h.temperature_2m[i]; n++; }
+  }
+  media = n ? media / n : T;
+  var Tatrasada = enElMomento(h.temperature_2m, h.time, t - 3.2 * 3600 * 1000);
+  var suelo = media + 0.38 * (Tatrasada - media) + variar(t, 0.1, 500, 200, 0.2);
+
+  var e = {
+    T: T, T10: T10, dif: dif, RH: Math.max(1, Math.min(100, RH)),
+    v2: v2, raf: raf, v10: v10, dir: dir, nub: nub,
+    rad: Math.max(0, rad || 0), llu: llu || 0, suelo: suelo,
+    noche: noche, t: t
+  };
+
+  /* lo que se haya forzado a mano desde el panel pisa al simulador */
+  var k;
+  for(k in SIM.forzado){
+    if(SIM.forzado[k] != null){
+      e[k] = SIM.forzado[k];
+      if(k === "T" || k === "dif") e.T10 = e.T + e.dif;
+      if(k === "v2") e.raf = e.v2 + 2;
+    }
+  }
+  return e;
+}
+
+function esNocheAhora(sol, t){
+  var d = new Date(t);
+  var iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+          + "-" + String(d.getDate()).padStart(2, "0")
+          + "T" + String(d.getHours()).padStart(2, "0")
+          + ":" + String(d.getMinutes()).padStart(2, "0");
+  return esNoche(iso, sol);
 }
 
 /* ---------- sol / noche ---------- */
@@ -525,17 +673,22 @@ function esNoche(iso, sol){
 
 /* ---------- evaluación ---------- */
 var CLAVES = ["viento","delta","hr","temp","inv"];
-function evaluar(T, RH, v10, nub, noche){
+/* opt.v2    -> viento ya medido a 2 m (viene de la estación)
+   opt.difInv-> diferencia de los dos termómetros; si viene, la inversión se
+                evalúa MEDIDA en vez de estimada. */
+function evaluar(T, RH, v10, nub, noche, opt){
+  opt = opt || {};
   /* Se redondea ANTES de aplicar las reglas, para que el número que se muestra
      y el color que se muestra nunca se contradigan. */
-  var v = Math.round(v2m(v10) * 10) / 10;
+  var v = Math.round((opt.v2 != null ? opt.v2 : v2m(v10)) * 10) / 10;
   var d = Math.round(deltaT(T, RH) * 10) / 10;
   T = Math.round(T * 10) / 10;
   RH = Math.round(RH);
+  var dif = opt.difInv != null ? Math.round(opt.difInv * 10) / 10 : null;
   var r = {
-    viento: regViento(v), delta: regDelta(d), hr: regHR(RH),
-    temp: regTemp(T), inv: regInversion(noche, v, nub),
-    v:v, d:d, T:T, RH:RH, nub:nub, noche:noche
+    viento: regViento(v), delta: regDelta(d), hr: regHR(RH), temp: regTemp(T),
+    inv: (dif != null) ? regInversionMedida(dif) : regInversionEstimada(noche, v, nub),
+    v:v, d:d, T:T, RH:RH, nub:nub, noche:noche, dif:dif
   };
   var es = [], i;
   for(i = 0; i < CLAVES.length; i++) es.push(r[CLAVES[i]].e);
@@ -552,7 +705,7 @@ var sel = $("campo"), hero = $("hero"), lens = $("lens"), stamp = $("stamp"),
     tiles = $("tiles"), tlscroll = $("tlscroll"), nowlbl = $("nowlbl"),
     win = $("win"), winic = $("winic"), det = $("det"), um = $("um"),
     err = $("err"), rfr = $("rfr"),
-    heladas = $("heladas"), semana = $("semana");
+    heladas = $("heladas"), semana = $("semana"), sim = $("sim"), chip = $("chip");
 
 var DIAS = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 var MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
@@ -618,10 +771,11 @@ function cargar(){
 /* ---------- pintado ---------- */
 function pintar(){
   if(!D) return;
-  var sol = mapaSol(D.daily), cu = D.current, i;
-  var noche = esNoche(cu.time, sol);
-  var r = evaluar(cu.temperature_2m, cu.relative_humidity_2m,
-                  cu.wind_speed_10m, cu.cloud_cover, noche);
+  var sol = mapaSol(D.daily), i;
+  var est = leerEstacion(sol);          /* <-- lo que manda la estación */
+  var noche = est.noche;
+  var r = evaluar(est.T, est.RH, est.v10, est.nub, noche,
+                  {v2: est.v2, difInv: est.dif});
 
   /* semáforo */
   var motivos = [];
@@ -633,31 +787,31 @@ function pintar(){
   hero.querySelector(".motivo").textContent =
     r.total === "ok" ? "Las cinco condiciones están en rango" : motivos.join(" · ");
 
-  /* antigüedad del dato */
-  var mins = Math.max(0, Math.round((Date.now() - new Date(cu.time + "-03:00").getTime()) / 60000));
-  var viejo = mins > 90;
+  /* antigüedad del dato: la estación manda cada un minuto */
+  var seg = SEG_DESDE_ENVIO();
+  var viejo = seg > 300;
   stamp.className = "stamp" + (viejo ? " old" : "");
   stamp.innerHTML = (viejo ? ICO.alerta : ICO.reloj)
-    + "<span>" + (viejo ? "DATO DE HACE " : "Dato de hace ")
-    + (mins < 60 ? mins + " min" : Math.round(mins / 60) + " h")
-    + " · " + cu.time.slice(11,16) + " hs"
+    + "<span>" + (viejo ? "SIN DATOS HACE " : "La estación envió hace ")
+    + (seg < 60 ? seg + " segundos" : Math.round(seg / 60) + " min")
+    + " · " + horaDe(est.t) + " hs"
     + (noche ? " · de noche" : "") + "</span>";
 
   /* tarjetas */
   var T = [
     ["viento", "Viento 2 m", r.v.toFixed(1), "km/h", r.viento,
-      "a 10 m: " + cu.wind_speed_10m.toFixed(1) + " · ráfaga " + cu.wind_gusts_10m.toFixed(0)],
-    ["brujula", "Dirección", rumbo(cu.wind_direction_10m), Math.round(cu.wind_direction_10m) + "°",
+      "ráfaga " + est.raf.toFixed(1) + " km/h"],
+    ["brujula", "Dirección", rumbo(est.dir), Math.round(est.dir) + "°",
       {e:"nu", r:"Verificar sensibles a favor"}, null],
     ["delta", "Delta T", r.d.toFixed(1), "°C", r.delta, null],
     ["gota", "Humedad", String(Math.round(r.RH)), "%", r.hr, null],
     ["termo", "Temperatura", r.T.toFixed(1), "°C", r.temp, null],
-    ["capas", "Inversión",
-      (r.inv.e === "no" ? "PROBABLE" : (r.inv.e === "wa" ? "POSIBLE" : "NO")), "",
-      r.inv, "nubes " + Math.round(r.nub) + "% · estimada"],
-    ["sol", "Radiación",
-      (cu.shortwave_radiation == null ? "—" : String(Math.round(cu.shortwave_radiation))),
-      "W/m²", {e:"nu", r: noche ? "De noche no hay" : "Energía que llega del sol"}, null]
+    ["capas", "Inversión", (est.dif >= 0 ? "+" : "") + est.dif.toFixed(1), "°C",
+      r.inv, "2 m: " + est.T.toFixed(1) + "° · 10 m: " + est.T10.toFixed(1) + "°"],
+    ["suelo", "Temp. suelo", est.suelo.toFixed(1), "°C",
+      {e:"nu", r:"Sensor enterrado en la base"}, null],
+    ["sol", "Radiación", String(Math.round(est.rad)), "W/m²",
+      {e:"nu", r: noche ? "De noche no hay" : "Energía que llega del sol"}, null]
   ];
   tiles.innerHTML = T.map(function(t){
     return '<div class="card ' + t[4].e + '">'
@@ -876,8 +1030,52 @@ tlscroll.addEventListener("click", function(ev){
   verDetalle(SEL);
 });
 
+/* ---------- panel del simulador ----------
+   Sirve para mostrarle a alguien qué pasa cuando cambian las condiciones,
+   sin tener que esperar a que cambie el tiempo de verdad. */
+var PERILLAS = [
+  ["g","Forzar valores (para mostrar)"],
+  ["s","Viento a 2 m",      "v2",  0,  30, 0.5, " km/h"],
+  ["s","Humedad",           "RH",  5, 100, 1,   " %"],
+  ["s","Temperatura",       "T",  -5,  45, 0.5, " °C"],
+  ["s","Diferencia 10 m − 2 m", "dif", -4, 6, 0.1, " °C"],
+  ["s","Nubosidad",         "nub", 0, 100, 5,   " %"]
+];
+
+function pintarSim(){
+  sim.innerHTML = PERILLAS.map(function(f){
+    if(f[0] === "g") return '<div class="ug">' + f[1] + '</div>';
+    var on = SIM.forzado[f[2]] != null;
+    return '<div class="ur"><label>' + f[1] + '</label>'
+      + '<input type="number" step="' + f[5] + '" min="' + f[3] + '" max="' + f[4] + '"'
+      + ' data-k="' + f[2] + '" placeholder="auto"'
+      + ' value="' + (on ? SIM.forzado[f[2]] : "") + '"></div>';
+  }).join("")
+  + '<div class="ug">Dejá un casillero vacío para que lo maneje el simulador</div>'
+  + '<button class="rst" id="sim0">Volver a automático</button>';
+
+  var inputs = sim.querySelectorAll("input"), i;
+  for(i = 0; i < inputs.length; i++){
+    inputs[i].addEventListener("input", function(){
+      var v = parseFloat(this.value);
+      SIM.forzado[this.dataset.k] = (this.value === "" || isNaN(v)) ? null : v;
+      pintar();
+    });
+  }
+  $("sim0").addEventListener("click", function(){
+    SIM.forzado = {}; pintarSim(); pintar();
+  });
+}
+
+$("sa").innerHTML = ICO.antena;
 pintarUm();
+pintarSim();
 cargar();
+
+/* la estación manda cada un minuto; la pantalla late cada 3 segundos para que
+   se vea que el dato está vivo */
+setInterval(function(){ if(D) pintar(); }, 3000);
+/* el pronóstico de fondo se refresca cada 10 minutos */
 setInterval(cargar, 10 * 60 * 1000);
 </script>
 </body>
