@@ -164,6 +164,37 @@ svg{width:1em;height:1em;display:block;flex:none}
   padding:0 13px 7px;text-transform:uppercase}
 @media (prefers-color-scheme:dark){.now{color:var(--ok)}}
 
+/* ---------- listas (heladas / semana) ---------- */
+.lista{background:var(--surf);border:1px solid var(--line);border-radius:14px;
+  box-shadow:var(--sh);overflow:hidden}
+.li{display:flex;align-items:center;gap:11px;padding:11px 13px;
+  border-bottom:1px solid var(--line)}
+.li:last-child{border:0}
+.li .dia{width:74px;flex:none;font-size:.78rem;font-weight:800;line-height:1.2}
+.li .dia u{display:block;font-size:.66rem;font-weight:600;color:var(--mut);
+  text-decoration:none;letter-spacing:.02em}
+.li .tmp{width:62px;flex:none;font-size:1.12rem;font-weight:850;text-align:right}
+.li .txt{flex:1;min-width:0}
+.li .et{font-size:.73rem;font-weight:850;letter-spacing:.04em}
+.li .sub{font-size:.69rem;color:var(--mut);line-height:1.3}
+.li.ok .tmp,.li.ok .et{color:var(--ok)}
+.li.wa .tmp,.li.wa .et{color:var(--wa)}
+.li.no .tmp,.li.no .et{color:var(--no)}
+.li.no{background:var(--no-s)}
+.li.wa{background:var(--wa-s)}
+
+/* barra de horas aptas por día */
+.li .barra{flex:1;height:9px;border-radius:99px;background:var(--line);overflow:hidden}
+.li .barra i{display:block;height:100%;border-radius:99px;background:var(--ok)}
+.li .hs{width:52px;flex:none;text-align:right;font-size:.8rem;font-weight:800;
+  font-variant-numeric:tabular-nums}
+.li .hs u{font-size:.64rem;font-weight:600;opacity:.6;text-decoration:none}
+
+.aviso{margin-top:9px;padding:10px 12px;background:var(--wa-s);color:var(--wa);
+  border:1px solid color-mix(in srgb,var(--wa) 30%,transparent);border-radius:11px;
+  font-size:.72rem;line-height:1.45;font-weight:600}
+.aviso b{font-weight:800}
+
 /* ---------- detalle ---------- */
 .det{background:var(--surf);border:1px solid var(--line);border-radius:14px;
   box-shadow:var(--sh);margin-top:10px;overflow:hidden;display:none}
@@ -277,6 +308,16 @@ summary svg{color:var(--mut);font-size:16px}
     <div><div class="t">Ventana</div><div class="v">—</div></div>
   </div>
 
+  <div class="sec">Heladas · próximas noches</div>
+  <div class="lista" id="heladas"></div>
+  <div class="aviso" id="avisoHelada">
+    La helada negra se confirma con <b>temperatura de suelo</b>. Sin ese sensor
+    esto es una sospecha fundada, no una certeza.
+  </div>
+
+  <div class="sec">La semana · horas aptas por día</div>
+  <div class="lista" id="semana"></div>
+
   <details>
     <summary><span id="sl"></span> Valores de corte <span class="ar">&#9656;</span></summary>
     <div class="um" id="um"></div>
@@ -389,6 +430,35 @@ function bulboHumedo(T, RH){
 }
 function deltaT(T, RH){ return T - bulboHumedo(T, RH); }
 
+/* Punto de rocío — fórmula de Magnus. Es lo que separa la helada blanca de la
+   negra: si el rocío está bajo cero el aire está tan seco que no llega a formarse
+   la escarcha, y la planta se congela directamente. */
+function puntoRocio(T, RH){
+  RH = Math.min(100, Math.max(1, RH));
+  var g = Math.log(RH / 100) + (17.625 * T) / (243.04 + T);
+  return (243.04 * g) / (17.625 - g);
+}
+
+/* ---------- heladas ----------
+   Umbrales que usa el agrónomo:
+     helada agronómica   entre 3 y 6 °C medidos a 2 m (a nivel de planta hace
+                         2 a 4 °C menos, por eso hiela sin marcar cero)
+     helada              0 °C o menos
+     helada negra        0 °C o menos + aire muy seco + cielo despejado
+   OJO: la negra se confirma de verdad con temperatura de SUELO. Hasta que no
+   esté ese sensor, esto es una sospecha fundada, no una certeza. */
+function regHelada(tmin, hrEnMin, nubEnMin){
+  var rocio = puntoRocio(tmin, hrEnMin);
+  if(tmin <= 0){
+    if(rocio < 0 && nubEnMin < 40)
+      return {e:"no", t:"HELADA NEGRA", r:"Bajo cero, aire seco y despejado"};
+    return {e:"no", t:"HELADA", r:"Bajo cero"};
+  }
+  if(tmin <= 3)  return {e:"no", t:"HELADA AGRONÓMICA", r:"A nivel de planta hiela igual"};
+  if(tmin <= 6)  return {e:"wa", t:"RIESGO", r:"Puede helar a nivel de planta"};
+  return {e:"ok", t:"SIN RIESGO", r:"Mínima holgada"};
+}
+
 /* viento 10 m -> 2 m, perfil logarítmico sobre cultivo (FAO-56) */
 var F2M = 4.87 / Math.log(67.8 * 10 - 5.42);
 function v2m(v10){ return v10 * F2M; }
@@ -476,7 +546,22 @@ var $ = function(i){ return document.getElementById(i); };
 var sel = $("campo"), hero = $("hero"), lens = $("lens"), stamp = $("stamp"),
     tiles = $("tiles"), tlscroll = $("tlscroll"), nowlbl = $("nowlbl"),
     win = $("win"), winic = $("winic"), det = $("det"), um = $("um"),
-    err = $("err"), rfr = $("rfr");
+    err = $("err"), rfr = $("rfr"),
+    heladas = $("heladas"), semana = $("semana");
+
+var DIAS = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+var MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+function fechaISO(d){
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0")
+       + "-" + String(d.getDate()).padStart(2,"0");
+}
+function nombreDia(iso, hoyISO, mananaISO){
+  if(iso === hoyISO) return {g:"hoy", c:""};
+  if(iso === mananaISO) return {g:"mañana", c:""};
+  var p = iso.split("-");
+  var d = new Date(+p[0], +p[1]-1, +p[2]);
+  return {g: DIAS[d.getDay()].slice(0,3), c: p[2] + " " + MESES[+p[1]-1]};
+}
 
 $("mk").innerHTML = ICO.marca;
 $("pin").innerHTML = ICO.pin;
@@ -499,10 +584,11 @@ function cargar(){
 
   var u = "https://api.open-meteo.com/v1/forecast?latitude=" + c.lat + "&longitude=" + c.lon
     + "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,"
-    + "wind_direction_10m,precipitation,cloud_cover"
+    + "wind_direction_10m,precipitation,cloud_cover,shortwave_radiation"
     + "&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,"
-    + "precipitation,cloud_cover"
-    + "&daily=sunrise,sunset&timezone=America%2FArgentina%2FBuenos_Aires&forecast_days=3";
+    + "precipitation,cloud_cover,shortwave_radiation"
+    + "&daily=sunrise,sunset&timezone=America%2FArgentina%2FBuenos_Aires"
+    + "&forecast_days=7&past_days=3";
 
   fetch(u).then(function(res){
     if(!res.ok) throw new Error("HTTP " + res.status);
@@ -563,7 +649,10 @@ function pintar(){
     ["termo", "Temperatura", r.T.toFixed(1), "°C", r.temp, null],
     ["capas", "Inversión",
       (r.inv.e === "no" ? "PROBABLE" : (r.inv.e === "wa" ? "POSIBLE" : "NO")), "",
-      r.inv, "nubes " + Math.round(r.nub) + "% · estimada"]
+      r.inv, "nubes " + Math.round(r.nub) + "% · estimada"],
+    ["sol", "Radiación",
+      (cu.shortwave_radiation == null ? "—" : String(Math.round(cu.shortwave_radiation))),
+      "W/m²", {e:"nu", r: noche ? "De noche no hay" : "Energía que llega del sol"}, null]
   ];
   tiles.innerHTML = T.map(function(t){
     return '<div class="card ' + t[4].e + '">'
@@ -624,7 +713,106 @@ function pintar(){
       dia + " de " + HORAS[a].iso.slice(11,16) + " a " + fin + " · " + (b - a + 1) + " h";
   }
 
+  pintarHeladas(sol);
+  pintarSemana(sol);
+
   if(SEL >= 0) verDetalle(SEL);
+}
+
+/* ---------- heladas ----------
+   Una "noche" va de las 18:00 de un día a las 09:00 del siguiente, y se le
+   adjudica al día en que empieza. Se busca la mínima de esa noche y se mira
+   la humedad y la nubosidad en ese momento exacto. */
+function pintarHeladas(sol){
+  var h = D.hourly, ahora = Date.now(), noches = {}, i;
+
+  for(i = 0; i < h.time.length; i++){
+    if(h.temperature_2m[i] === null) continue;
+    var t = h.time[i], hh = +t.slice(11,13);
+    var clave;
+    if(hh >= 18) clave = t.slice(0,10);
+    else if(hh <= 9){
+      var d = new Date(+t.slice(0,4), +t.slice(5,7)-1, +t.slice(8,10));
+      d.setDate(d.getDate() - 1);
+      clave = fechaISO(d);
+    } else continue;
+
+    var n = noches[clave];
+    if(!n || h.temperature_2m[i] < n.tmin){
+      noches[clave] = {
+        tmin: h.temperature_2m[i],
+        hr:   h.relative_humidity_2m[i],
+        nub:  h.cloud_cover[i],
+        hora: t.slice(11,16),
+        iso:  t,
+        ms:   new Date(t + "-03:00").getTime()
+      };
+    }
+  }
+
+  var hoyISO = fechaISO(new Date());
+  var man = new Date(); man.setDate(man.getDate() + 1);
+  var mananaISO = fechaISO(man);
+
+  var claves = Object.keys(noches).sort().filter(function(k){
+    /* solo noches que todavía no terminaron */
+    return noches[k].ms > ahora - 3 * 3600 * 1000;
+  }).slice(0, 7);
+
+  if(!claves.length){
+    heladas.innerHTML = '<div class="li"><div class="txt"><div class="sub">'
+      + 'Sin datos de noches próximas.</div></div></div>';
+    return;
+  }
+
+  heladas.innerHTML = claves.map(function(k){
+    var n = noches[k];
+    var g = regHelada(Math.round(n.tmin * 10) / 10, n.hr, n.nub);
+    var nm = nombreDia(k, hoyISO, mananaISO);
+    return '<div class="li ' + g.e + '">'
+      + '<div class="dia">' + nm.g + (nm.c ? '<u>' + nm.c + '</u>' : '<u>noche</u>') + '</div>'
+      + '<div class="tmp num">' + n.tmin.toFixed(1) + '°</div>'
+      + '<div class="txt"><div class="et">' + g.t + '</div>'
+      + '<div class="sub">' + g.r + ' · mínima ' + n.hora
+      + ' hs · nubes ' + Math.round(n.nub) + '%</div></div></div>';
+  }).join("");
+}
+
+/* ---------- la semana: horas aptas por día ----------
+   Incluye los días pasados que trae la API, que es el "historial día a día"
+   que pidió. Cuando esté la estación, estos números van a ser medidos. */
+function pintarSemana(sol){
+  var h = D.hourly, ahora = Date.now(), dias = {}, i;
+
+  for(i = 0; i < h.time.length; i++){
+    if(h.temperature_2m[i] === null) continue;
+    var t = h.time[i], k = t.slice(0,10);
+    if(!dias[k]) dias[k] = {ok:0, total:0};
+    var e = evaluar(h.temperature_2m[i], h.relative_humidity_2m[i],
+                    h.wind_speed_10m[i], h.cloud_cover[i], esNoche(t, sol));
+    dias[k].total++;
+    if(e.total === "ok") dias[k].ok++;
+  }
+
+  var hoyISO = fechaISO(new Date());
+  /* "pasó" solo para días anteriores a hoy: hoy sigue siendo hoy aunque sean
+     las 23:30 y ya no queden horas por delante. */
+  Object.keys(dias).forEach(function(k){ dias[k].pasado = k < hoyISO; });
+  var man = new Date(); man.setDate(man.getDate() + 1);
+  var mananaISO = fechaISO(man);
+  var claves = Object.keys(dias).sort();
+
+  semana.innerHTML = claves.map(function(k){
+    var d = dias[k], nm = nombreDia(k, hoyISO, mananaISO);
+    var pct = d.total ? Math.round(d.ok / d.total * 100) : 0;
+    var clase = d.ok >= 6 ? "ok" : (d.ok >= 2 ? "wa" : "no");
+    return '<div class="li">'
+      + '<div class="dia">' + nm.g
+      + '<u>' + (nm.c || (k === hoyISO ? "" : "")) + (d.pasado ? " (pasó)" : "") + '</u></div>'
+      + '<div class="barra"><i style="width:' + pct + '%"></i></div>'
+      + '<div class="hs num" style="color:var(--' + clase + ')">' + d.ok + '<u> h</u></div>'
+      + '</div>';
+  }).join("");
 }
 
 function verDetalle(i){
